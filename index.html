@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我们的小天地</title>
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+    <header>
+        <h1>我们的小天地</h1>
+        <p>只属于你我的私密空间</p>
+    </header>
+    
+    <nav>
+        <a href="#articles" class="nav-link active" data-section="articles">文章</a>
+        <a href="#essays" class="nav-link" data-section="essays">随笔</a>
+        <a href="#images" class="nav-link" data-section="images">图片</a>
+        <a href="#videos" class="nav-link" data-section="videos">视频</a>
+    </nav>
+    
+    <main>
+        <!-- 文章板块 -->
+        <section id="articles" class="content-section active">
+            <h2>文章</h2>
+            <div class="upload-area">
+                <input type="file" id="article-upload" accept=".md,.txt" hidden>
+                <label for="article-upload" class="upload-btn">+ 添加文章</label>
+            </div>
+            <div id="articles-list" class="items-list">
+                <div class="empty-state">暂无文章，点击上方按钮添加</div>
+            </div>
+        </section>
+        
+        <!-- 随笔板块 -->
+        <section id="essays" class="content-section">
+            <h2>随笔</h2>
+            <div class="upload-area">
+                <input type="file" id="essay-upload" accept=".md,.txt" hidden>
+                <label for="essay-upload" class="upload-btn">+ 添加随笔</label>
+            </div>
+            <div id="essays-list" class="items-list">
+                <div class="empty-state">暂无随笔，点击上方按钮添加</div>
+            </div>
+        </section>
+        
+        <!-- 图片板块 -->
+        <section id="images" class="content-section">
+            <h2>图片</h2>
+            <div class="upload-area">
+                <input type="file" id="image-upload" accept="image/*,.raw,.cr2,.nef,.arw,.dng" multiple hidden>
+                <label for="image-upload" class="upload-btn">+ 添加图片 (支持 RAW & JPG)</label>
+            </div>
+            <div class="filter-bar">
+                <button class="filter-btn active" data-filter="all">全部</button>
+                <button class="filter-btn" data-filter="jpg">JPG</button>
+                <button class="filter-btn" data-filter="raw">RAW</button>
+            </div>
+            <div id="images-grid" class="images-grid">
+                <div class="empty-state">暂无图片，点击上方按钮添加</div>
+            </div>
+        </section>
+        
+        <!-- 视频板块 -->
+        <section id="videos" class="content-section">
+            <h2>视频</h2>
+            <div class="upload-area">
+                <input type="file" id="video-upload" accept="video/*" multiple hidden>
+                <label for="video-upload" class="upload-btn">+ 添加视频</label>
+            </div>
+            <div id="videos-list" class="items-list">
+                <div class="empty-state">暂无视频，点击上方按钮添加</div>
+            </div>
+        </section>
+    </main>
+    
+    <!-- 图片预览模态框 -->
+    <div id="image-modal" class="modal">
+        <span class="modal-close">&times;</span>
+        <div class="modal-content">
+            <img id="modal-image" src="" alt="预览">
+            <div class="modal-info">
+                <p id="modal-filename"></p>
+                <p id="modal-format"></p>
+                <a id="modal-download" href="#" download class="download-btn">下载原图</a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 文本查看模态框 -->
+    <div id="text-modal" class="modal">
+        <span class="modal-close">&times;</span>
+        <div class="modal-content text-modal-content">
+            <h3 id="text-modal-title"></h3>
+            <div id="text-modal-body" class="text-body"></div>
+        </div>
+    </div>
+    
+    <footer>
+        <p>我们的小天地 - 只属于你和我</p>
+    </footer>
+    
+    <script src="assets/app.js"></script>
+</body>
+</html>
