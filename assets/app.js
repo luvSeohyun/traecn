@@ -1,9 +1,19 @@
-// GitHub API 配置
-const GITHUB_CONFIG = {
-    token: localStorage.getItem('github_token') || '',
-    owner: localStorage.getItem('github_owner') || 'luvSeohyun',
-    repo: localStorage.getItem('github_repo') || 'traecn',
-    branch: localStorage.getItem('github_branch') || 'master'
+// 配置
+const CONFIG = {
+    github: {
+        token: localStorage.getItem('github_token') || '',
+        owner: localStorage.getItem('github_owner') || 'luvSeohyun',
+        repo: localStorage.getItem('github_repo') || 'traecn',
+        branch: localStorage.getItem('github_branch') || 'master'
+    },
+    nas: {
+        enabled: localStorage.getItem('storage_source') === 'nas' || localStorage.getItem('storage_source') === 'both',
+        url: localStorage.getItem('nas_url') || '',
+        username: localStorage.getItem('nas_username') || '',
+        password: localStorage.getItem('nas_password') || '',
+        basePath: localStorage.getItem('nas_basepath') || '/我们的小天地'
+    },
+    storageSource: localStorage.getItem('storage_source') || 'github'
 };
 
 // RAW格式列表
@@ -17,13 +27,21 @@ let data = {
     videos: []
 };
 
+// 当前编辑状态
+let currentEditor = {
+    type: '', // 'articles' 或 'essays'
+    mode: '', // 'create' 或 'edit'
+    item: null
+};
+
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
     initUploads();
     initModals();
     initConfig();
-    loadDataFromGitHub();
+    initEditor();
+    loadData();
 });
 
 // 导航切换
@@ -47,21 +65,128 @@ function initNavigation() {
 
 // 文件上传处理
 function initUploads() {
+    // 文章上传
     document.getElementById('article-upload').addEventListener('change', (e) => {
         handleTextUpload(e.target.files, 'articles');
     });
     
+    // 随笔上传
     document.getElementById('essay-upload').addEventListener('change', (e) => {
         handleTextUpload(e.target.files, 'essays');
     });
     
+    // 图片上传
     document.getElementById('image-upload').addEventListener('change', (e) => {
         handleImageUpload(e.target.files);
     });
     
+    // 视频上传
     document.getElementById('video-upload').addEventListener('change', (e) => {
         handleVideoUpload(e.target.files);
     });
+    
+    // 写文章按钮
+    document.getElementById('write-article').addEventListener('click', () => {
+        openEditor('articles', 'create');
+    });
+    
+    // 写随笔按钮
+    document.getElementById('write-essay').addEventListener('click', () => {
+        openEditor('essays', 'create');
+    });
+}
+
+// 初始化编辑器
+function initEditor() {
+    document.getElementById('editor-save').addEventListener('click', saveEditorContent);
+    document.getElementById('editor-cancel').addEventListener('click', closeEditor);
+}
+
+// 打开编辑器
+function openEditor(type, mode, item = null) {
+    currentEditor = { type, mode, item };
+    
+    const modal = document.getElementById('editor-modal');
+    const title = document.getElementById('editor-title');
+    const filename = document.getElementById('editor-filename');
+    const content = document.getElementById('editor-content');
+    
+    title.textContent = mode === 'create' 
+        ? (type === 'articles' ? '写文章' : '写随笔')
+        : (type === 'articles' ? '编辑文章' : '编辑随笔');
+    
+    if (mode === 'edit' && item) {
+        filename.value = item.title;
+        content.value = item.content;
+    } else {
+        filename.value = '';
+        content.value = '';
+    }
+    
+    modal.classList.add('active');
+    content.focus();
+}
+
+// 关闭编辑器
+function closeEditor() {
+    document.getElementById('editor-modal').classList.remove('active');
+    currentEditor = { type: '', mode: '', item: null };
+}
+
+// 保存编辑器内容
+async function saveEditorContent() {
+    const filename = document.getElementById('editor-filename').value.trim();
+    const content = document.getElementById('editor-content').value;
+    
+    if (!filename) {
+        alert('请输入文件名');
+        return;
+    }
+    
+    if (!content) {
+        alert('请输入内容');
+        return;
+    }
+    
+    const fullFilename = filename + '.md';
+    const folder = currentEditor.type === 'articles' ? 'articles' : 'essays';
+    
+    showSyncStatus('正在保存...', 'syncing');
+    
+    let success = false;
+    
+    // 根据存储源保存
+    if (CONFIG.storageSource === 'github' || CONFIG.storageSource === 'both') {
+        success = await uploadToGitHub(folder, fullFilename, content);
+    }
+    
+    if (CONFIG.storageSource === 'nas' || CONFIG.storageSource === 'both') {
+        success = await uploadToNAS(folder, fullFilename, content);
+    }
+    
+    if (success) {
+        const item = {
+            id: Date.now() + Math.random(),
+            title: filename,
+            content: content,
+            date: new Date().toLocaleString('zh-CN'),
+            filename: fullFilename,
+            path: `${folder}/${fullFilename}`
+        };
+        
+        if (currentEditor.mode === 'edit' && currentEditor.item) {
+            const index = data[currentEditor.type].findIndex(i => i.id === currentEditor.item.id);
+            if (index !== -1) {
+                data[currentEditor.type][index] = item;
+            }
+        } else {
+            data[currentEditor.type].unshift(item);
+        }
+        
+        renderAll();
+        closeEditor();
+        showSyncStatus('保存成功！', 'success');
+    }
 }
 
 // 处理文本文件上传
@@ -72,8 +197,17 @@ async function handleTextUpload(files, type) {
         const content = await readFileAsText(file);
         const filename = file.name;
         
-        // 上传到 GitHub
-        const success = await uploadToGitHub(folder, filename, content);
+        showSyncStatus(`正在上传 ${filename}...`, 'syncing');
+        
+        let success = false;
+        
+        if (CONFIG.storageSource === 'github' || CONFIG.storageSource === 'both') {
+            success = await uploadToGitHub(folder, filename, content);
+        }
+        
+        if (CONFIG.storageSource === 'nas' || CONFIG.storageSource === 'both') {
+            success = await uploadToNAS(folder, filename, content);
+        }
         
         if (success) {
             const item = {
@@ -98,7 +232,17 @@ async function handleImageUpload(files) {
         const filename = file.name;
         const isRaw = RAW_FORMATS.some(ext => filename.toLowerCase().endsWith(ext));
         
-        const success = await uploadToGitHub('images', filename, content, true);
+        showSyncStatus(`正在上传 ${filename}...`, 'syncing');
+        
+        let success = false;
+        
+        if (CONFIG.storageSource === 'github' || CONFIG.storageSource === 'both') {
+            success = await uploadToGitHub('images', filename, content, true);
+        }
+        
+        if (CONFIG.storageSource === 'nas' || CONFIG.storageSource === 'both') {
+            success = await uploadToNAS('images', filename, content, true);
+        }
         
         if (success) {
             const item = {
@@ -124,7 +268,17 @@ async function handleVideoUpload(files) {
         const content = await readFileAsBase64(file);
         const filename = file.name;
         
-        const success = await uploadToGitHub('videos', filename, content, true);
+        showSyncStatus(`正在上传 ${filename}...`, 'syncing');
+        
+        let success = false;
+        
+        if (CONFIG.storageSource === 'github' || CONFIG.storageSource === 'both') {
+            success = await uploadToGitHub('videos', filename, content, true);
+        }
+        
+        if (CONFIG.storageSource === 'nas' || CONFIG.storageSource === 'both') {
+            success = await uploadToNAS('videos', filename, content, true);
+        }
         
         if (success) {
             const item = {
@@ -166,12 +320,9 @@ function readFileAsBase64(file) {
 
 // 上传到 GitHub
 async function uploadToGitHub(folder, filename, content, isBinary = false) {
-    if (!GITHUB_CONFIG.token) {
-        alert('请先配置 GitHub Token！');
+    if (!CONFIG.github.token) {
         return false;
     }
-    
-    showSyncStatus('正在同步到 GitHub...', 'syncing');
     
     try {
         const path = `${folder}/${filename}`;
@@ -181,10 +332,10 @@ async function uploadToGitHub(folder, filename, content, isBinary = false) {
         let sha = null;
         try {
             const checkResponse = await fetch(
-                `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${path}?ref=${GITHUB_CONFIG.branch}`,
+                `https://api.github.com/repos/${CONFIG.github.owner}/${CONFIG.github.repo}/contents/${path}?ref=${CONFIG.github.branch}`,
                 {
                     headers: {
-                        'Authorization': `token ${GITHUB_CONFIG.token}`,
+                        'Authorization': `token ${CONFIG.github.token}`,
                         'Accept': 'application/vnd.github.v3+json'
                     }
                 }
@@ -201,7 +352,7 @@ async function uploadToGitHub(folder, filename, content, isBinary = false) {
         const body = {
             message: `Upload ${filename}`,
             content: encodedContent,
-            branch: GITHUB_CONFIG.branch
+            branch: CONFIG.github.branch
         };
         
         if (sha) {
@@ -209,11 +360,11 @@ async function uploadToGitHub(folder, filename, content, isBinary = false) {
         }
         
         const response = await fetch(
-            `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${path}`,
+            `https://api.github.com/repos/${CONFIG.github.owner}/${CONFIG.github.repo}/contents/${path}`,
             {
                 method: 'PUT',
                 headers: {
-                    'Authorization': `token ${GITHUB_CONFIG.token}`,
+                    'Authorization': `token ${CONFIG.github.token}`,
                     'Accept': 'application/vnd.github.v3+json',
                     'Content-Type': 'application/json'
                 },
@@ -221,38 +372,65 @@ async function uploadToGitHub(folder, filename, content, isBinary = false) {
             }
         );
         
-        if (response.ok) {
-            showSyncStatus('同步成功！', 'success');
-            return true;
-        } else {
-            const error = await response.json();
-            throw new Error(error.message);
-        }
+        return response.ok;
     } catch (error) {
-        showSyncStatus(`同步失败: ${error.message}`, 'error');
-        console.error('Upload error:', error);
+        console.error('GitHub upload error:', error);
         return false;
     }
 }
 
-// 从 GitHub 加载数据
-async function loadDataFromGitHub() {
-    if (!GITHUB_CONFIG.token) {
-        renderAll();
-        return;
+// 上传到 NAS (WebDAV)
+async function uploadToNAS(folder, filename, content, isBinary = false) {
+    if (!CONFIG.nas.url || !CONFIG.nas.username) {
+        return false;
     }
     
-    showSyncStatus('正在从 GitHub 加载...', 'syncing');
+    try {
+        const path = `${CONFIG.nas.basePath}/${folder}/${filename}`;
+        const url = `${CONFIG.nas.url}${encodeURIComponent(path)}`;
+        
+        let body;
+        if (isBinary) {
+            // Base64 转二进制
+            const byteCharacters = atob(content);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            body = new Uint8Array(byteNumbers);
+        } else {
+            body = content;
+        }
+        
+        const response = await fetch(url, {
+            method: 'PUT',
+            headers: {
+                'Authorization': 'Basic ' + btoa(CONFIG.nas.username + ':' + CONFIG.nas.password),
+                'Content-Type': isBinary ? 'application/octet-stream' : 'text/plain'
+            },
+            body: body
+        });
+        
+        return response.ok || response.status === 201;
+    } catch (error) {
+        console.error('NAS upload error:', error);
+        return false;
+    }
+}
+
+// 加载数据
+async function loadData() {
+    showSyncStatus('正在加载数据...', 'syncing');
     
     try {
-        // 加载文章
-        data.articles = await loadFolderFromGitHub('articles', 'text');
-        // 加载随笔
-        data.essays = await loadFolderFromGitHub('essays', 'text');
-        // 加载图片
-        data.images = await loadFolderFromGitHub('images', 'image');
-        // 加载视频
-        data.videos = await loadFolderFromGitHub('videos', 'video');
+        // 根据存储源加载
+        if (CONFIG.storageSource === 'github' || CONFIG.storageSource === 'both') {
+            await loadFromGitHub();
+        }
+        
+        if (CONFIG.storageSource === 'nas' || CONFIG.storageSource === 'both') {
+            await loadFromNAS();
+        }
         
         showSyncStatus('加载完成！', 'success');
         renderAll();
@@ -263,23 +441,54 @@ async function loadDataFromGitHub() {
     }
 }
 
+// 从 GitHub 加载
+async function loadFromGitHub() {
+    if (!CONFIG.github.token) return;
+    
+    data.articles = await loadFolderFromGitHub('articles', 'text');
+    data.essays = await loadFolderFromGitHub('essays', 'text');
+    data.images = await loadFolderFromGitHub('images', 'image');
+    data.videos = await loadFolderFromGitHub('videos', 'video');
+}
+
+// 从 NAS 加载
+async function loadFromNAS() {
+    if (!CONFIG.nas.url || !CONFIG.nas.username) return;
+    
+    const nasArticles = await loadFolderFromNAS('articles', 'text');
+    const nasEssays = await loadFolderFromNAS('essays', 'text');
+    const nasImages = await loadFolderFromNAS('images', 'image');
+    const nasVideos = await loadFolderFromNAS('videos', 'video');
+    
+    // 合并数据（去重）
+    data.articles = mergeData(data.articles, nasArticles);
+    data.essays = mergeData(data.essays, nasEssays);
+    data.images = mergeData(data.images, nasImages);
+    data.videos = mergeData(data.videos, nasVideos);
+}
+
+// 合并数据（根据文件名去重）
+function mergeData(existing, newData) {
+    const existingNames = new Set(existing.map(item => item.filename));
+    const uniqueNew = newData.filter(item => !existingNames.has(item.filename));
+    return [...existing, ...uniqueNew];
+}
+
 // 从 GitHub 加载文件夹
 async function loadFolderFromGitHub(folder, type) {
     try {
         const response = await fetch(
-            `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${folder}?ref=${GITHUB_CONFIG.branch}`,
+            `https://api.github.com/repos/${CONFIG.github.owner}/${CONFIG.github.repo}/contents/${folder}?ref=${CONFIG.github.branch}`,
             {
                 headers: {
-                    'Authorization': `token ${GITHUB_CONFIG.token}`,
+                    'Authorization': `token ${CONFIG.github.token}`,
                     'Accept': 'application/vnd.github.v3+json'
                 }
             }
         );
         
         if (!response.ok) {
-            if (response.status === 404) {
-                return []; // 文件夹不存在，返回空数组
-            }
+            if (response.status === 404) return [];
             throw new Error(`Failed to load ${folder}`);
         }
         
@@ -299,7 +508,8 @@ async function loadFolderFromGitHub(folder, type) {
                     content: content,
                     date: new Date(file.last_modified || Date.now()).toLocaleString('zh-CN'),
                     filename: file.name,
-                    path: file.path
+                    path: file.path,
+                    source: 'github'
                 });
             } else if (type === 'image') {
                 const blob = await contentResponse.blob();
@@ -314,7 +524,8 @@ async function loadFolderFromGitHub(folder, type) {
                     isRaw: isRaw,
                     date: new Date(file.last_modified || Date.now()).toLocaleString('zh-CN'),
                     size: formatFileSize(file.size),
-                    path: file.path
+                    path: file.path,
+                    source: 'github'
                 });
             } else if (type === 'video') {
                 const blob = await contentResponse.blob();
@@ -327,14 +538,116 @@ async function loadFolderFromGitHub(folder, type) {
                     title: file.name.replace(/\.[^/.]+$/, ''),
                     date: new Date(file.last_modified || Date.now()).toLocaleString('zh-CN'),
                     size: formatFileSize(file.size),
-                    path: file.path
+                    path: file.path,
+                    source: 'github'
                 });
             }
         }
         
         return items;
     } catch (error) {
-        console.error(`Error loading ${folder}:`, error);
+        console.error(`Error loading ${folder} from GitHub:`, error);
+        return [];
+    }
+}
+
+// 从 NAS 加载文件夹 (WebDAV PROPFIND)
+async function loadFolderFromNAS(folder, type) {
+    try {
+        const path = `${CONFIG.nas.basePath}/${folder}`;
+        const url = `${CONFIG.nas.url}${encodeURIComponent(path)}`;
+        
+        // WebDAV PROPFIND 请求
+        const response = await fetch(url, {
+            method: 'PROPFIND',
+            headers: {
+                'Authorization': 'Basic ' + btoa(CONFIG.nas.username + ':' + CONFIG.nas.password),
+                'Content-Type': 'text/xml',
+                'Depth': '1'
+            },
+            body: `<?xml version="1.0" encoding="utf-8"?>
+                <propfind xmlns="DAV:">
+                    <prop>
+                        <displayname/>
+                        <getcontentlength/>
+                        <getlastmodified/>
+                        <resourcetype/>
+                    </prop>
+                </propfind>`
+        });
+        
+        if (!response.ok) {
+            if (response.status === 404) return [];
+            throw new Error(`Failed to load ${folder} from NAS`);
+        }
+        
+        const xmlText = await response.text();
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+        
+        const responses = xmlDoc.querySelectorAll('response');
+        const items = [];
+        
+        for (const resp of responses) {
+            const href = resp.querySelector('href')?.textContent || '';
+            const displayName = resp.querySelector('displayname')?.textContent || '';
+            const contentLength = resp.querySelector('getcontentlength')?.textContent || '0';
+            const lastModified = resp.querySelector('getlastmodified')?.textContent;
+            const isCollection = resp.querySelector('resourcetype collection') !== null;
+            
+            // 跳过文件夹本身
+            if (isCollection || !displayName || displayName === folder) continue;
+            
+            const fileUrl = `${CONFIG.nas.url}${href}`;
+            
+            if (type === 'text') {
+                const contentResponse = await fetch(fileUrl, {
+                    headers: {
+                        'Authorization': 'Basic ' + btoa(CONFIG.nas.username + ':' + CONFIG.nas.password)
+                    }
+                });
+                const content = await contentResponse.text();
+                
+                items.push({
+                    id: 'nas_' + displayName,
+                    title: displayName.replace(/\.[^/.]+$/, ''),
+                    content: content,
+                    date: lastModified ? new Date(lastModified).toLocaleString('zh-CN') : new Date().toLocaleString('zh-CN'),
+                    filename: displayName,
+                    path: `${folder}/${displayName}`,
+                    source: 'nas'
+                });
+            } else if (type === 'image') {
+                const isRaw = RAW_FORMATS.some(ext => displayName.toLowerCase().endsWith(ext));
+                
+                items.push({
+                    id: 'nas_' + displayName,
+                    src: fileUrl + '?auth=' + btoa(CONFIG.nas.username + ':' + CONFIG.nas.password),
+                    filename: displayName,
+                    format: isRaw ? 'RAW' : getImageFormat(displayName),
+                    isRaw: isRaw,
+                    date: lastModified ? new Date(lastModified).toLocaleString('zh-CN') : new Date().toLocaleString('zh-CN'),
+                    size: formatFileSize(parseInt(contentLength)),
+                    path: `${folder}/${displayName}`,
+                    source: 'nas'
+                });
+            } else if (type === 'video') {
+                items.push({
+                    id: 'nas_' + displayName,
+                    src: fileUrl + '?auth=' + btoa(CONFIG.nas.username + ':' + CONFIG.nas.password),
+                    filename: displayName,
+                    title: displayName.replace(/\.[^/.]+$/, ''),
+                    date: lastModified ? new Date(lastModified).toLocaleString('zh-CN') : new Date().toLocaleString('zh-CN'),
+                    size: formatFileSize(parseInt(contentLength)),
+                    path: `${folder}/${displayName}`,
+                    source: 'nas'
+                });
+            }
+        }
+        
+        return items;
+    } catch (error) {
+        console.error(`Error loading ${folder} from NAS:`, error);
         return [];
     }
 }
@@ -394,7 +707,7 @@ function renderArticles() {
         return `
         <div class="item-card" onclick="openTextModal('articles', '${article.id}')">
             <h3>${escapeHtml(article.title)}</h3>
-            <div class="item-meta">${article.date}</div>
+            <div class="item-meta">${article.date} ${article.source ? `(${article.source})` : ''}</div>
             <div class="item-preview">${escapeHtml(previewLines)}${article.content.split('\n').length > 3 ? '...' : ''}</div>
         </div>
     `}).join('');
@@ -413,7 +726,7 @@ function renderEssays() {
         return `
         <div class="item-card" onclick="openTextModal('essays', '${essay.id}')">
             <h3>${escapeHtml(essay.title)}</h3>
-            <div class="item-meta">${essay.date}</div>
+            <div class="item-meta">${essay.date} ${essay.source ? `(${essay.source})` : ''}</div>
             <div class="item-preview">${escapeHtml(previewLines)}${essay.content.split('\n').length > 3 ? '...' : ''}</div>
         </div>
     `}).join('');
@@ -441,7 +754,7 @@ function renderImages(filter = 'all') {
             <span class="format-badge">${image.format}</span>
             <div class="image-overlay">
                 <p>${escapeHtml(image.filename)}</p>
-                <small>${image.size} · ${image.date}</small>
+                <small>${image.size} · ${image.date} ${image.source ? `(${image.source})` : ''}</small>
             </div>
         </div>
     `).join('');
@@ -463,7 +776,7 @@ function renderVideos() {
             </video>
             <div class="video-info">
                 <h4>${escapeHtml(video.title)}</h4>
-                <div class="video-meta">${video.size} · ${video.date}</div>
+                <div class="video-meta">${video.size} · ${video.date} ${video.source ? `(${video.source})` : ''}</div>
             </div>
         </div>
     `).join('');
@@ -499,10 +812,27 @@ function initConfig() {
     const saveBtn = document.getElementById('save-config');
     
     // 加载已保存的配置
-    document.getElementById('github-token').value = GITHUB_CONFIG.token;
-    document.getElementById('repo-owner').value = GITHUB_CONFIG.owner;
-    document.getElementById('repo-name').value = GITHUB_CONFIG.repo;
-    document.getElementById('repo-branch').value = GITHUB_CONFIG.branch;
+    document.getElementById('github-token').value = CONFIG.github.token;
+    document.getElementById('repo-owner').value = CONFIG.github.owner;
+    document.getElementById('repo-name').value = CONFIG.github.repo;
+    document.getElementById('repo-branch').value = CONFIG.github.branch;
+    
+    document.getElementById('storage-source').value = CONFIG.storageSource;
+    document.getElementById('nas-url').value = CONFIG.nas.url;
+    document.getElementById('nas-username').value = CONFIG.nas.username;
+    document.getElementById('nas-password').value = CONFIG.nas.password;
+    document.getElementById('nas-basepath').value = CONFIG.nas.basePath;
+    
+    // 配置标签页切换
+    document.querySelectorAll('.config-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.config-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            
+            document.querySelectorAll('.config-panel').forEach(p => p.classList.remove('active'));
+            document.getElementById(tab.dataset.tab + '-config').classList.add('active');
+        });
+    });
     
     configBtn.addEventListener('click', () => {
         configModal.classList.add('active');
@@ -513,32 +843,50 @@ function initConfig() {
 
 // 保存配置
 function saveConfig() {
-    const token = document.getElementById('github-token').value.trim();
+    // GitHub 配置
+    const githubToken = document.getElementById('github-token').value.trim();
     const owner = document.getElementById('repo-owner').value.trim();
     const repo = document.getElementById('repo-name').value.trim();
     const branch = document.getElementById('repo-branch').value.trim();
     
-    if (!token) {
-        showConfigStatus('请输入 GitHub Token', 'error');
-        return;
-    }
+    // NAS 配置
+    const storageSource = document.getElementById('storage-source').value;
+    const nasUrl = document.getElementById('nas-url').value.trim();
+    const nasUsername = document.getElementById('nas-username').value.trim();
+    const nasPassword = document.getElementById('nas-password').value;
+    const nasBasePath = document.getElementById('nas-basepath').value.trim();
     
-    localStorage.setItem('github_token', token);
+    // 保存到 localStorage
+    localStorage.setItem('github_token', githubToken);
     localStorage.setItem('github_owner', owner);
     localStorage.setItem('github_repo', repo);
     localStorage.setItem('github_branch', branch);
     
-    GITHUB_CONFIG.token = token;
-    GITHUB_CONFIG.owner = owner;
-    GITHUB_CONFIG.repo = repo;
-    GITHUB_CONFIG.branch = branch;
+    localStorage.setItem('storage_source', storageSource);
+    localStorage.setItem('nas_url', nasUrl);
+    localStorage.setItem('nas_username', nasUsername);
+    localStorage.setItem('nas_password', nasPassword);
+    localStorage.setItem('nas_basepath', nasBasePath);
+    
+    // 更新配置对象
+    CONFIG.github.token = githubToken;
+    CONFIG.github.owner = owner;
+    CONFIG.github.repo = repo;
+    CONFIG.github.branch = branch;
+    
+    CONFIG.storageSource = storageSource;
+    CONFIG.nas.enabled = storageSource === 'nas' || storageSource === 'both';
+    CONFIG.nas.url = nasUrl;
+    CONFIG.nas.username = nasUsername;
+    CONFIG.nas.password = nasPassword;
+    CONFIG.nas.basePath = nasBasePath;
     
     showConfigStatus('配置保存成功！', 'success');
     
     // 重新加载数据
     setTimeout(() => {
         closeAllModals();
-        loadDataFromGitHub();
+        loadData();
     }, 1000);
 }
 
