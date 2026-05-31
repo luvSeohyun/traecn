@@ -10,7 +10,37 @@
     <header>
         <h1>我们的小天地</h1>
         <p>只属于你我的私密空间</p>
+        <button id="config-btn" class="config-btn" title="设置">⚙️</button>
     </header>
+    
+    <!-- 配置模态框 -->
+    <div id="config-modal" class="modal">
+        <div class="modal-content config-modal-content">
+            <span class="modal-close">&times;</span>
+            <h3>GitHub 配置</h3>
+            <div class="config-form">
+                <label>
+                    GitHub Token:
+                    <input type="password" id="github-token" placeholder="ghp_xxxxxxxxxxxx">
+                    <small>需要 repo 权限的 Personal Access Token</small>
+                </label>
+                <label>
+                    仓库所有者:
+                    <input type="text" id="repo-owner" placeholder="例如: luvSeohyun" value="luvSeohyun">
+                </label>
+                <label>
+                    仓库名称:
+                    <input type="text" id="repo-name" placeholder="例如: traecn" value="traecn">
+                </label>
+                <label>
+                    分支:
+                    <input type="text" id="repo-branch" placeholder="例如: master" value="master">
+                </label>
+                <button id="save-config" class="save-btn">保存配置</button>
+                <p id="config-status" class="config-status"></p>
+            </div>
+        </div>
+    </div>
     
     <nav>
         <a href="#articles" class="nav-link active" data-section="articles">文章</a>
