@@ -42,6 +42,31 @@ const CONFIG = {
     storageSource: localStorage.getItem('storage_source') || 'github'
 };
 
+// 检查配置是否已持久化
+function getConfigSaveTime() {
+    return localStorage.getItem('config_saved_at');
+}
+
+function isConfigExpired() {
+    const savedAt = getConfigSaveTime();
+    if (!savedAt) return true;
+    const saved = new Date(savedAt).getTime();
+    const now = Date.now();
+    // 7天过期
+    return (now - saved) > 7 * 24 * 60 * 60 * 1000;
+}
+
+function isConfigured() {
+    const source = CONFIG.storageSource;
+    if (source === 'github' || source === 'both') {
+        if (!CONFIG.github.token) return false;
+    }
+    if (source === 'nas' || source === 'both') {
+        if (!CONFIG.nas.url || !CONFIG.nas.username) return false;
+    }
+    return true;
+}
+
 const RAW_FORMATS = ['.raw', '.cr2', '.nef', '.arw', '.dng', '.orf', '.raf', '.pef'];
 
 let data = { articles: [], essays: [], images: [], videos: [] };
@@ -55,7 +80,21 @@ document.addEventListener('DOMContentLoaded', () => {
     initModals();
     initConfig();
     initEditor();
-    loadData();
+    
+    // 检查配置持久化状态
+    if (isConfigured() && !isConfigExpired()) {
+        const savedAt = new Date(getConfigSaveTime()).toLocaleString('zh-CN');
+        // 配置有效，静默加载
+        loadData();
+    } else if (isConfigured() && isConfigExpired()) {
+        showToast('warning', '配置已过期',
+            `上次配置保存于 ${savedAt}，已超过 7 天。建议重新检查配置是否仍然有效。`);
+        loadData();
+    } else {
+        showToast('info', '欢迎使用',
+            '首次使用需要配置 GitHub Token 或 NAS 信息。请点击右上角 ⚙️ 设置按钮进行配置。配置会自动保存，下次访问无需重新设置。', 8000);
+        renderAll();
+    }
 });
 
 // ========== 导航切换 ==========
@@ -1017,6 +1056,17 @@ function initConfig() {
     
     configBtn.addEventListener('click', () => {
         document.getElementById('config-modal').classList.add('active');
+        // 显示上次保存时间
+        const savedTimeEl = document.getElementById('config-saved-time');
+        const savedAt = getConfigSaveTime();
+        if (savedAt) {
+            const date = new Date(savedAt).toLocaleString('zh-CN');
+            const expired = isConfigExpired();
+            savedTimeEl.textContent = `上次保存：${date}${expired ? '（已过期，建议重新保存）' : ''}`;
+            savedTimeEl.style.color = expired ? '#f0ad4e' : '#28a745';
+        } else {
+            savedTimeEl.textContent = '';
+        }
     });
     
     saveBtn.addEventListener('click', saveConfig);
@@ -1059,6 +1109,9 @@ function saveConfig() {
     localStorage.setItem('nas_username', nasUsername);
     localStorage.setItem('nas_password', nasPassword);
     localStorage.setItem('nas_basepath', nasBasePath);
+    
+    // 记录配置保存时间
+    localStorage.setItem('config_saved_at', new Date().toISOString());
     
     CONFIG.github.token = githubToken;
     CONFIG.github.owner = owner;

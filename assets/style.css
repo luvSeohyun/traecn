@@ -457,6 +457,13 @@ header {
     color: #dc3545;
 }
 
+.config-saved-time {
+    text-align: center;
+    font-size: 0.8rem;
+    margin-top: 0.5rem;
+    color: #28a745;
+}
+
 /* 配置标签页 */
 .config-tabs {
     display: flex;
